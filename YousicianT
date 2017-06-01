@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# Script to start Yousician with the MP3 transcode hack put it, together with
+# 'yousician_transcode.so' in the Yousician directory (where the 'Yousician
+# Launcher executable is)
+
+# transcoder command to use
+
+YOUSICIAN_TRANSCODER="sox -t mp3 - -t ogg -"
+#YOUSICIAN_TRANSCODER="ffmpeg -f mp3 -i - -f ogg -"
+
+#----------------------------------------------------
+
+myname="$(readlink -f "$0")"
+[ -e "$myname" ] || exit 1
+
+dir="$(dirname "$myname")"
+[ -d "$dir" ] || exit 1
+
+export YOUSICIAN_TRANSCODER
+
+# $dir may contain spaces, cannot be used in $LD_PRELOAD
+tmpdir="$(mktemp -d)" || exit 1
+ln -s "$dir/yousician_transcode.so" "$tmpdir/yousician_transcode.so"
+export LD_PRELOAD="$tmpdir/yousician_transcode.so"
+"$dir/Yousician Launcher"
+rm "$tmpdir/yousician_transcode.so"
+rmdir "$tmpdir"

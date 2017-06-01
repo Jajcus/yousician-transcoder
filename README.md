@@ -1,4 +1,4 @@
-# Yousician Transcoder – a hack to add MP3 support to Yousician on Linux
+# Yousician Transcoder
 
 [Yousician](http://yousician.com/) is a great application for learning and
 practicing playing guitar and other instruments. Yousician provides access to

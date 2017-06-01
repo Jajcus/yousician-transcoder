@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <linux/limits.h>
@@ -34,7 +35,6 @@ static int transcode(const char * input, const char * output) {
 FILE * in_f = NULL;
 FILE * out_f = NULL;
 char buf[IO_BUF_SIZE];
-size_t nr, nw;
 char * p;
 int transcoded = 0;
 int is_mp3 = 0;
@@ -65,6 +65,7 @@ int is_mp3 = 0;
 				goto cleanup;
 			}
 			is_mp3 = 1;
+			continue;
 		}
 		if (fputs(buf, out_f) == 0) {
 			perror("fputs");
@@ -75,27 +76,57 @@ int is_mp3 = 0;
 		fprintf(stderr, "not transcoding %s, not MP3\n", input);
 		goto cleanup;
 	}
-	if (fputs("\r\n", out_f) == 0) {
+	if (fputs("content-type: application/ogg\r\n\r\n", out_f) == 0) {
 		perror("fputs");
 		goto cleanup;
 	}
 	fflush(out_f);
 
 	fprintf(stderr, "Transcoding %s to %s\n", input, output);
-	do {
-		nr = fread(buf, 1, IO_BUF_SIZE, in_f);
-		if (ferror(in_f)) {
-			perror("fread");
+
+	// actual position on the file descriptor may be somewhere after
+	// the current FILE * pointer, due to libc buffering
+	long input_pos = ftell(in_f);
+	int in_fd = fileno(in_f);
+	int out_fd = fileno(out_f);
+
+	pid_t pid = fork();
+	if (pid == -1) {
+		perror("fork");
+		goto cleanup;
+	}
+	if (pid == 0) {
+		/* child process */
+		if (dup2(in_fd, STDIN_FILENO) == -1) {
+			perror("dup2(stdin)");
+			_exit(1);
+		}
+		close(in_fd);
+		if (lseek(STDIN_FILENO, input_pos, SEEK_SET) == -1) {
+			perror("lseek(stdin)");
+			_exit(1);
+		}
+		if (dup2(out_fd, STDOUT_FILENO) == -1) {
+			perror("dup2(stdout)");
+			_exit(1);
+		}
+		unsetenv("LD_PRELOAD");
+		execl("/bin/sh", "sh", "-c", TRANSCODER, (char *) 0);
+		perror("execl");
+		_exit(1);
+	}
+	else {
+		int wstatus;
+		pid_t rpid = waitpid(pid, &wstatus, 0);
+		if (rpid == -1) {
+			perror("waitpid");
 			goto cleanup;
 		}
-		if (nr) {
-			nw = fwrite(buf, 1, nr, out_f);
-			if (nw < nr) {
-				perror("fwrite");
-				goto cleanup;
-			}
+		if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus) != 0) {
+			fprintf(stderr, "Transcoder failed!\n");
+			goto cleanup;
 		}
-	} while (nr == IO_BUF_SIZE);
+	}
 
 	fprintf(stderr, "Transcoded!\n");
 	transcoded = 1;
@@ -199,5 +230,5 @@ void _init(void) {
 		abort();
 	}
 	cache_dir_l = n;
-	fprintf(stderr, "Yousician HTTP cache dir: %s\n", cache_dir);
+	fprintf(stderr, "Yousician HTTP cache dir: %s (%i bytes)\n", cache_dir, (int)cache_dir_l);
 }

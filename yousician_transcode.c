@@ -10,15 +10,117 @@
 #include <linux/limits.h>
 #include <string.h>
 #include <stdarg.h>
+#include <unistd.h>
 
 #define CACHE_DIR_PATH "unity3d/Yousician/Yousician/HTTPCache/"
 #define CONFIG_DIR_PATH ".config/"
 
+#define TRANSCODER "sox -t mp3 - -t ogg -"
+
+#define IO_BUF_SIZE 4096
+
 static char cache_dir[PATH_MAX];
 static size_t cache_dir_l;
 
-int (*orig_open)(const char * pathname, int flags, ...);
+/*
+ * Open 'input' HTTP cache file, read HTTP headers, check if the file is MPEG
+ * audio. If so, transcode the contents to OGG Vorbis and write to output.
+ *
+ * Return 1 when file was transcoded successfully
+ *
+ * not re-entrant!
+ */
+static int transcode(const char * input, const char * output) {
+FILE * in_f = NULL;
+FILE * out_f = NULL;
+char buf[IO_BUF_SIZE];
+size_t nr, nw;
+char * p;
+int transcoded = 0;
+int is_mp3 = 0;
 
+	in_f = fopen(input, "rb");
+	if (!in_f) {
+		perror(input);
+		goto cleanup;
+	}
+	out_f = fopen(output, "wb");
+	if (!out_f) {
+		perror(output);
+		goto cleanup;
+	}
+
+	// read and copy the headers, abort early if Content-Type is not audio/mpeg
+	while(1) {
+		p = fgets(buf, IO_BUF_SIZE, in_f);
+		if (!p) {
+			perror("fgets");
+			goto cleanup;
+		}
+		if (buf[0] == '\r' && buf[1] == '\n' && buf[2] == '\000') break;
+		if (strncmp(buf, "content-type: ", 14) == 0) {
+			p = buf + 14;
+			if (strncmp(p, "audio/mpeg", 10) != 0) {
+				fprintf(stderr, "not transcoding %s, not MP3\n", input);
+				goto cleanup;
+			}
+			is_mp3 = 1;
+		}
+		if (fputs(buf, out_f) == 0) {
+			perror("fputs");
+			goto cleanup;
+		}
+	}
+	if (!is_mp3) {
+		fprintf(stderr, "not transcoding %s, not MP3\n", input);
+		goto cleanup;
+	}
+	if (fputs("\r\n", out_f) == 0) {
+		perror("fputs");
+		goto cleanup;
+	}
+	fflush(out_f);
+
+	fprintf(stderr, "Transcoding %s to %s\n", input, output);
+	do {
+		nr = fread(buf, 1, IO_BUF_SIZE, in_f);
+		if (ferror(in_f)) {
+			perror("fread");
+			goto cleanup;
+		}
+		if (nr) {
+			nw = fwrite(buf, 1, nr, out_f);
+			if (nw < nr) {
+				perror("fwrite");
+				goto cleanup;
+			}
+		}
+	} while (nr == IO_BUF_SIZE);
+
+	fprintf(stderr, "Transcoded!\n");
+	transcoded = 1;
+
+cleanup:
+	if (in_f) fclose(in_f);
+	if (out_f) fclose(out_f);
+	if (!transcoded) unlink(output);
+
+	return transcoded;
+}
+
+int (*orig_open)(const char * pathname, int flags, ...);
+/*
+ * open() syscall wrapper
+ *
+ * For open() calls for files inside Yousician HTTPCache directory:
+ * - on open for read:
+ *   - open transcoded files instead of the original one, if transcoded file exists
+ *   - if there is no transcoded file - find out if transcoding is possible
+ *     - if it is, transcode the file (from MP3 to OGG) and open the transcoded file
+ *     - otherwise, or when transcoding fails, open the original file
+ *
+ * For other paths: just call the original open()
+ */
 int open(const char * path, int flags, ...) {
 
 	va_list ap;
@@ -35,6 +137,37 @@ int open(const char * path, int flags, ...) {
 		return orig_open(path, flags, mode);
 	}
 	fprintf(stderr, "wrapping open(\"%s\", %i, %i)\n", path, flags, mode);
+
+	char transcoded_path[PATH_MAX];
+	int n;
+
+	n = snprintf(transcoded_path, PATH_MAX, "%s.transcoded", path);
+	if (n >= PATH_MAX) {
+		fprintf(stderr, "path buffer overflow\n");
+		errno = EOVERFLOW;
+		return -1;
+	}
+
+	struct stat st;
+	int exists = (stat(transcoded_path, &st) == 0);
+
+	if ((flags & O_ACCMODE) == O_WRONLY || (flags & O_ACCMODE) == O_RDWR) {
+		if (exists) {
+			fprintf(stderr, "removing stale transcoded file\n");
+			unlink(path);
+		}
+	}
+	else {
+		if (exists) {
+			fprintf(stderr, "Opening existing %s\n", transcoded_path);
+			path = transcoded_path;
+		}
+		else if (transcode(path, transcoded_path)) {
+			fprintf(stderr, "Opening transcoded %s\n", transcoded_path);
+			path = transcoded_path;
+		}
+	}
+
 	errno = saved_errno;
 	return orig_open(path, flags, mode);
 }

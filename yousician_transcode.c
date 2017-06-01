@@ -83,7 +83,8 @@ int is_mp3 = 0;
 		if (buf[0] == '\r' && buf[1] == '\n' && buf[2] == '\000') break;
 		if (strncmp(buf, "content-type: ", 14) == 0) {
 			p = buf + 14;
-			if (strncmp(p, "audio/mpeg", 10) != 0) {
+			if (strncmp(p, "audio/mpeg", 10) != 0
+					&& strncmp(p, "audio/mp3", 9) != 0) {
 				fprintf(stderr, "not transcoding %s, not MP3\n", input);
 				goto cleanup;
 			}

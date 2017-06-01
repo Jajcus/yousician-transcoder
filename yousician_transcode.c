@@ -16,7 +16,7 @@
 #define CACHE_DIR_PATH "unity3d/Yousician/Yousician/HTTPCache/"
 #define CONFIG_DIR_PATH ".config/"
 
-#define TRANSCODER "sox -t mp3 - -t ogg -"
+#define DEFAULT_TRANSCODER "sox -t mp3 - -t ogg -"
 
 #define IO_BUF_SIZE 4096
 
@@ -111,7 +111,9 @@ int is_mp3 = 0;
 			_exit(1);
 		}
 		unsetenv("LD_PRELOAD");
-		execl("/bin/sh", "sh", "-c", TRANSCODER, (char *) 0);
+		const char * transcoder = getenv("YOUSICIAN_TRANSCODER");
+		if (!transcoder) transcoder = DEFAULT_TRANSCODER;
+		execl("/bin/sh", "sh", "-c", transcoder, (char *) 0);
 		perror("execl");
 		_exit(1);
 	}

@@ -23,7 +23,7 @@ Compile the wrapper library with:
 make
 ```
 
-Or just get already compiled binary package from: https://github.com/Jajcus/yousician_transcoder/releases
+Or just get already compiled binary package from: https://github.com/Jajcus/yousician-transcoder/releases
 
 Put the '`YousicianT`' and `'yousician_transcode.so'` files in the Yousician
 base directory (the folder when the 'Yousician Launcher' executable is).

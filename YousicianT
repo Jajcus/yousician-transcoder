@@ -20,9 +20,9 @@ dir="$(dirname "$myname")"
 export YOUSICIAN_TRANSCODER
 
 # $dir may contain spaces, cannot be used in $LD_PRELOAD
-tmpdir="$(mktemp -d)" || exit 1
-ln -s "$dir/yousician_transcode.so" "$tmpdir/yousician_transcode.so"
-export LD_PRELOAD="$tmpdir/yousician_transcode.so"
+# use the config dir instead – it is always there and should not contain spaces
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}"/unity3d/Yousician/Yousician
+mkdir -p "$config_dir"
+ln -s "$dir/yousician_transcode.so" "$config_dir/yousician_transcode.so"
+export LD_PRELOAD="$config_dir/yousician_transcode.so"
 "$dir/Yousician Launcher"
-rm "$tmpdir/yousician_transcode.so"
-rmdir "$tmpdir"

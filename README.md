@@ -32,3 +32,8 @@ Use 'YousicianT' instead of 'Yousician Launcher' to start the application.
 
 To use 'ffmpeg' (or other command-line tool) instead of 'sox' for file
 conversion, edit the 'YousicianT' script.
+
+## Known Issues
+
+* The 'Hammer Song' in the 'Broken Chords' mission is broken by this patch, as
+  it is an OGG Vorbis file served as audio/mpeg

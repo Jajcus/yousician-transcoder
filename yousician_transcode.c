@@ -106,11 +106,18 @@ int is_mp3 = 0;
 	}
 	fflush(out_f);
 
-	fprintf(stderr, "Transcoding %s to %s\n", input, output);
-
 	// actual position on the file descriptor may be somewhere after
 	// the current FILE * pointer, due to libc buffering
 	long input_pos = ftell(in_f);
+
+	int bytes_read = fread(buf, 1, 3, in_f);
+	if (bytes_read == 3 && buf[0] == 'O' && buf[1] == 'g' && buf[2] == 'g') {
+		fprintf(stderr, "File served as MP3, but looks like an OGG. Not transcoding.\n");
+		goto cleanup;
+	}
+
+	fprintf(stderr, "Transcoding %s to %s\n", input, output);
+
 	int in_fd = fileno(in_f);
 	int out_fd = fileno(out_f);
 
